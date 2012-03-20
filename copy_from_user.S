@@ -75,9 +75,35 @@
 	.macro enter reg1 reg2
 	mov	r3, #0
 	stmdb	sp!, {r0, r2, r3, \reg1, \reg2}
+#ifdef CONFIG_SCRIBE
+	@ r0 == kptr, r1 == uptr, those are already setup, but r1 needs to be saved
+	@ however, we save (again) r2 and r3, because their stack offsets depend
+	@ on whether reg1 or reg2 happens to be r1. r0 is always at the same offset.
+	stmfd sp!, {r1, r2, r3, lr}
+	@ r2 (size) is already setup
+	@ r3 (flags) needs to be loaded up w/ a constant
+	mov r3, #0
+	bl scribe_pre_uaccess
+	ldmfd sp, {r1, r2, r3, lr}	@ note: does not update sp, b/c we need those values at exit as well
+	ldr r0, [sp, #16]
+#endif	/* CONFIG_SCRIBE */
 	.endm
 
 	.macro exit reg1 reg2
+#ifdef CONFIG_SCRIBE
+	@ save regs that might get clobbered by the call
+	stmfd sp!, {r1, r2, r3, lr}
+	@ load up the argument values we saved on entry
+	ldr r1, [sp, #16]
+	ldr r2, [sp, #20]
+	ldr r0, [sp, #32]
+	mov r3, #0
+	bl scribe_post_uaccess
+	@ restore regs (not r0, it gets immediately clobbered below)
+	ldmfd sp!, {r1, r2, r3, lr}
+	@ get rid of the registers we saved in enter
+	add sp, sp, #16
+#endif	/* CONFIG_SCRIBE */
 	add	sp, sp, #8
 	ldmfd	sp!, {r0, \reg1, \reg2}
 	.endm
