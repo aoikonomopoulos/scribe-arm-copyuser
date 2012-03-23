@@ -119,6 +119,9 @@ ENDPROC(__copy_from_user)
 	.pushsection .fixup,"ax"
 	.align 0
 	copy_abort_preamble
+#ifdef CONFIG_SCRIBE
+	add sp, sp, #16
+#endif	/* CONFIG_SCRIBE */
 	ldmfd	sp!, {r1, r2}
 	sub	r3, r0, r1
 	rsb	r1, r3, r2
