@@ -74,6 +74,7 @@ SECTIONS
     /* .gnu.warning sections are handled specially by elf32.em.  */
     *(.gnu.warning)
     *(.glue_7t) *(.glue_7) *(.vfp11_veneer) *(.v4_bx)
+    *(.fixup)
   } =0
   .fini           :
   {
@@ -158,6 +159,9 @@ SECTIONS
   {
     PROVIDE (__data_start = .);
     *(.data .data.* .gnu.linkonce.d.*)
+    __start___ex_table = .;
+    *(__ex_table)
+    __stop___ex_table = .;
     SORT(CONSTRUCTORS)
   }
   .data1          : { *(.data1) }
