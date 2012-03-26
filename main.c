@@ -1,4 +1,5 @@
 #include <err.h>
+#include <linux/scribe_uaccess.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -152,7 +153,7 @@ test___copy_from_user(void)
 	if (ret != sizeof(UBUF_STRING)) {
 		errx(3, "Expected %zu, got %ld", sizeof(UBUF_STRING), ret);
 	}
-	scribe_uaccess_verify(true, 0, true, 0);
+	scribe_uaccess_verify(true, SCRIBE_DATA_INPUT, true, SCRIBE_DATA_INPUT);
 }
 
 static void

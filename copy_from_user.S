@@ -82,7 +82,7 @@
 	stmfd sp!, {r1, r2, r3, lr}
 	@ r2 (size) is already setup
 	@ r3 (flags) needs to be loaded up w/ a constant
-	mov r3, #0
+	mov r3, #SCRIBE_DATA_INPUT
 	bl scribe_pre_uaccess
 	ldmfd sp, {r1, r2, r3, lr}	@ note: does not update sp, b/c we need those values at exit as well
 	ldr r0, [sp, #16]
@@ -97,7 +97,7 @@
 	ldr r1, [sp, #16]
 	ldr r2, [sp, #20]
 	ldr r0, [sp, #32]
-	mov r3, #0
+	mov r3, #SCRIBE_DATA_INPUT
 	bl scribe_post_uaccess
 	@ restore regs (not r0, it gets immediately clobbered below)
 	ldmfd sp!, {r1, r2, r3, lr}
