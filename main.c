@@ -81,16 +81,12 @@ setup_partially_mapped_buffer(size_t size)
 	return ret;
 }
 
-int
-main(void)
+static void
+test___copy_from_user(void)
 {
 	char kbuf[1024] = "";
 	char *partial_ubuf;
 	unsigned long ret;
-
-	setup_sighandlers();
-
-	print_exception_table();
 
 	memset(kbuf, '\0', sizeof(kbuf));
 	printf("kbuf = %p, ubuf = %p\n", kbuf, ubuf);
@@ -107,6 +103,31 @@ main(void)
 	printf("ret = %lu, kbuf is %s\n", ret, kbuf);
 	if (ret != sizeof(UBUF_STRING)) {
 		errx(3, "Expected %zu, got %ld", sizeof(UBUF_STRING), ret);
+	}
+}
+
+static struct testcase {
+	const char *name;
+	void (*func)(void);
+} testcases[] = {
+	{
+		.name = "__copy_from_user",
+		.func = test___copy_from_user,
+	},
+};
+
+int
+main(void)
+{
+	unsigned i;
+
+	setup_sighandlers();
+
+	print_exception_table();
+
+	for (i = 0; i < (sizeof(testcases) / sizeof(testcases[0])); ++i) {
+		printf("*** %s\n", testcases[i].name);
+		testcases[i].func();
 	}
 	return 0;
 }
