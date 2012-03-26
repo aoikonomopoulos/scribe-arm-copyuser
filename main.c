@@ -12,6 +12,7 @@
 #define UBUF_STRING "This text is the content of the user buffer"
 char ubuf[] = UBUF_STRING;
 
+/* remember: returns the number of bytes that could not be copied */
 extern unsigned long   __copy_from_user(void *to, const void __user *from, unsigned long n);
 extern void loadcontext(mcontext_t *);
 
@@ -95,11 +96,17 @@ main(void)
 	printf("kbuf = %p, ubuf = %p\n", kbuf, ubuf);
 	ret = __copy_from_user(kbuf, ubuf, sizeof(ubuf));
 	printf("ret = %lu, kbuf is %s\n", ret, kbuf);
+	if (ret != 0) {
+		errx(3, "Expected 0, got %lu\n", ret);
+	}
 
 	memset(kbuf, '\0', sizeof(kbuf));
 	partial_ubuf = setup_partially_mapped_buffer(sizeof(UBUF_STRING));
 	printf("kbuf = %p, partial_ubuf = %p\n", kbuf, partial_ubuf);
 	ret = __copy_from_user(kbuf, partial_ubuf, sizeof(UBUF_STRING));
 	printf("ret = %lu, kbuf is %s\n", ret, kbuf);
+	if (ret != sizeof(UBUF_STRING)) {
+		errx(3, "Expected %zu, got %ld", sizeof(UBUF_STRING), ret);
+	}
 	return 0;
 }
