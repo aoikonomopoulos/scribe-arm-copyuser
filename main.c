@@ -1,6 +1,7 @@
 #include <err.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <ucontext.h>
@@ -10,10 +11,11 @@
 
 #define __user
 #define UBUF_STRING "This text is the content of the user buffer"
-char ubuf[] = UBUF_STRING;
 
 /* remember: returns the number of bytes that could not be copied */
 extern unsigned long   __copy_from_user(void *to, const void __user *from, unsigned long n);
+extern unsigned long   __copy_to_user(void __user *to, const void *from, unsigned long n);
+
 extern void loadcontext(mcontext_t *);
 
 void
@@ -84,6 +86,7 @@ setup_partially_mapped_buffer(size_t size)
 static void
 test___copy_from_user(void)
 {
+	char ubuf[] = UBUF_STRING;
 	char kbuf[1024] = "";
 	char *partial_ubuf;
 	unsigned long ret;
@@ -106,28 +109,74 @@ test___copy_from_user(void)
 	}
 }
 
+static void
+test___copy_to_user(void)
+{
+	char kbuf[] = UBUF_STRING;
+	char ubuf[1024];
+	char *partial_ubuf;
+	unsigned long ret;
+
+	printf("kbuf = %p, ubuf = %p\n", kbuf, ubuf);
+	ret = __copy_to_user(ubuf, kbuf, sizeof(kbuf));
+	if (ret != 0)
+		errx(3, "Expected %zu, got %ld", 0, ret);
+	printf("ret = %lu, ubuf is %s\n", ret, ubuf);
+	partial_ubuf = setup_partially_mapped_buffer(sizeof(kbuf));
+	printf("kbuf = %p, partial_ubuf = %p\n", kbuf, partial_ubuf);
+	ret = __copy_to_user(partial_ubuf, kbuf, sizeof(kbuf));
+	printf("ret = %lu, partial_ubuf is %.*s\n", ret, sizeof(kbuf) / 2, partial_ubuf);
+	if (ret != (sizeof(kbuf) / 2)) {
+		errx(3, "Expected %zu, got %ld", (sizeof(kbuf) / 2), ret);
+	}
+}
+
 static struct testcase {
 	const char *name;
 	void (*func)(void);
 } testcases[] = {
-	{
-		.name = "__copy_from_user",
-		.func = test___copy_from_user,
+#define TC(kfunc)					\
+	{						\
+		.name = #kfunc,				\
+		.func = test ## _ ## kfunc,		\
 	},
+	TC(__copy_from_user)
+	TC(__copy_to_user)
+#undef TC
 };
 
-int
-main(void)
+static void
+testcases_list(void)
 {
 	unsigned i;
+	for (i = 0; i < (sizeof(testcases) / sizeof(testcases[0])); ++i) {
+		printf("%s\n", testcases[i].name);
+	}
+}
 
+int
+main(int argc, char **argv)
+{
+	unsigned i;
+	const char *testcase;
+
+	if (argc != 2)
+		errx(2, "need one argument\n");
+	if (!strcmp("list", argv[1])) {
+		testcases_list();
+		exit(0);
+	}
 	setup_sighandlers();
-
 	print_exception_table();
 
+	testcase = argv[1];
 	for (i = 0; i < (sizeof(testcases) / sizeof(testcases[0])); ++i) {
+		if (strcmp(testcases[i].name, testcase))
+			continue;
 		printf("*** %s\n", testcases[i].name);
 		testcases[i].func();
+		exit(0);
 	}
+	errx(2, "no such testcase: %s\n", testcase);
 	return 0;
 }
