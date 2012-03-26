@@ -1,5 +1,6 @@
 #include <err.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,10 +19,52 @@ extern unsigned long   __copy_to_user(void __user *to, const void *from, unsigne
 
 extern void loadcontext(mcontext_t *);
 
+struct scribe_uaccess_log {
+	bool pre;
+	int pre_flags;
+	bool post;
+	int post_flags;
+} scribe_uaccess_log;
+
+static void
+scribe_uaccess_init(void)
+{
+	scribe_uaccess_log = (struct scribe_uaccess_log){
+		.pre = false,
+		.pre_flags = -1,
+		.post = false,
+		.post_flags = -1,
+	};
+}
+
+#define bool_str(v) ((v) ? "true" : "false")
+#define assert_eq(fmt, a, b)			\
+	do {					\
+		typeof(a) __a = (a);			\
+		typeof(b) __b = (b);			\
+		if (__a != __b) {			\
+			fprintf(stderr, "%s != %s (", #a, #b);	\
+			fprintf(stderr, fmt, __a, __b);			\
+			fprintf(stderr, ")\n");				\
+			abort();					\
+		}							\
+	} while (0)
+static void
+scribe_uaccess_verify(bool pre, int pre_flags, bool post, int post_flags)
+{
+	assert_eq("%d != %d", scribe_uaccess_log.pre, pre);
+	assert_eq("%d != %d",scribe_uaccess_log.pre_flags, pre_flags);
+
+	assert_eq("%d != %d", scribe_uaccess_log.post, post);
+	assert_eq("%d != %d",scribe_uaccess_log.post_flags, post_flags);
+}
+
 void
 scribe_pre_uaccess(const void *data, const void __user *user_ptr,
 		   size_t size, int flags)
 {
+	scribe_uaccess_log.pre = true;
+	scribe_uaccess_log.pre_flags = flags;
 	printf("%s: called with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
 }
 
@@ -29,6 +72,8 @@ void
 scribe_post_uaccess(const void *data, const void __user *user_ptr,
 		    size_t size, int flags)
 {
+	scribe_uaccess_log.post = true;
+	scribe_uaccess_log.post_flags = flags;
 	printf("%s: called with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
 }
 
@@ -107,6 +152,7 @@ test___copy_from_user(void)
 	if (ret != sizeof(UBUF_STRING)) {
 		errx(3, "Expected %zu, got %ld", sizeof(UBUF_STRING), ret);
 	}
+	scribe_uaccess_verify(true, 0, true, 0);
 }
 
 static void
@@ -129,6 +175,7 @@ test___copy_to_user(void)
 	if (ret != (sizeof(kbuf) / 2)) {
 		errx(3, "Expected %zu, got %ld", (sizeof(kbuf) / 2), ret);
 	}
+	scribe_uaccess_verify(true, 0, true, 0);
 }
 
 static struct testcase {
@@ -174,6 +221,7 @@ main(int argc, char **argv)
 		if (strcmp(testcases[i].name, testcase))
 			continue;
 		printf("*** %s\n", testcases[i].name);
+		scribe_uaccess_init();
 		testcases[i].func();
 		exit(0);
 	}
