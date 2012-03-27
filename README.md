@@ -1,6 +1,7 @@
 Throwaway repo to easily test and verify the scribe callbacks from arm asm
 
 Gotchas:
+
 * Need to set KERNEL_OBJDIR appropriately in the Makefile
 * Need to create two symlinks to within the kernel source tree
     * asm -> $(KERNEL_SRCDIR)/arch/arm/include/asm
