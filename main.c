@@ -21,23 +21,31 @@ extern unsigned long   __copy_to_user(void __user *to, const void *from, unsigne
 extern void loadcontext(mcontext_t *);
 
 struct scribe_uaccess_log {
-	bool pre;
-	int pre_flags;
-	bool post;
-	int post_flags;
-} scribe_uaccess_log;
+	bool done;
+	int flags;
+	const void *data;
+	const void *uptr;
+	size_t size;
+} scribe_uaccess_log_pre, scribe_uaccess_log_post;
+
+static void
+scribe_uaccess_init_log(struct scribe_uaccess_log *log)
+{
+	*log = (struct scribe_uaccess_log){
+		.done = false,
+		.data = (void *)0xdeadbeef,
+		.uptr = (void *)0xdeadbeef,
+		.size = (size_t)-1,
+		.flags = -1,
+	};
+}
 
 static void
 scribe_uaccess_init(void)
 {
-	scribe_uaccess_log = (struct scribe_uaccess_log){
-		.pre = false,
-		.pre_flags = -1,
-		.post = false,
-		.post_flags = -1,
-	};
+	scribe_uaccess_init_log(&scribe_uaccess_log_pre);
+	scribe_uaccess_init_log(&scribe_uaccess_log_post);
 }
-
 #define bool_str(v) ((v) ? "true" : "false")
 #define assert_eq(fmt, a, b)			\
 	do {					\
@@ -50,22 +58,28 @@ scribe_uaccess_init(void)
 			abort();					\
 		}							\
 	} while (0)
-static void
-scribe_uaccess_verify(bool pre, int pre_flags, bool post, int post_flags)
-{
-	assert_eq("%d != %d", scribe_uaccess_log.pre, pre);
-	assert_eq("%d != %d",scribe_uaccess_log.pre_flags, pre_flags);
 
-	assert_eq("%d != %d", scribe_uaccess_log.post, post);
-	assert_eq("%d != %d",scribe_uaccess_log.post_flags, post_flags);
+static void
+scribe_uaccess_verify(struct scribe_uaccess_log *log, bool done, void *data, void *uptr, size_t size, int flags)
+{
+	assert_eq("%d != %d", log->done, done);
+	if (!done)
+		return;
+	assert_eq("%p != %p", log->data, data);
+	assert_eq("%p != %p", log->uptr, uptr);
+	assert_eq("%zd != %zd", log->size, size);
+	assert_eq("%d != %d", log->flags, flags);
 }
 
 void
 scribe_pre_uaccess(const void *data, const void __user *user_ptr,
 		   size_t size, int flags)
 {
-	scribe_uaccess_log.pre = true;
-	scribe_uaccess_log.pre_flags = flags;
+	scribe_uaccess_log_pre.done = true;
+	scribe_uaccess_log_pre.data = data;
+	scribe_uaccess_log_pre.uptr = user_ptr;
+	scribe_uaccess_log_pre.flags = flags;
+	scribe_uaccess_log_pre.size = size;
 	printf("%s: called with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
 }
 
@@ -73,8 +87,11 @@ void
 scribe_post_uaccess(const void *data, const void __user *user_ptr,
 		    size_t size, int flags)
 {
-	scribe_uaccess_log.post = true;
-	scribe_uaccess_log.post_flags = flags;
+	scribe_uaccess_log_post.done = true;
+	scribe_uaccess_log_post.data = data;
+	scribe_uaccess_log_post.uptr = user_ptr;
+	scribe_uaccess_log_post.flags = flags;
+	scribe_uaccess_log_post.size = size;
 	printf("%s: called with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
 }
 
@@ -137,6 +154,8 @@ test___copy_from_user(void)
 	char *partial_ubuf;
 	unsigned long ret;
 
+	scribe_uaccess_init();
+
 	memset(kbuf, '\0', sizeof(kbuf));
 	printf("kbuf = %p, ubuf = %p\n", kbuf, ubuf);
 	ret = __copy_from_user(kbuf, ubuf, sizeof(ubuf));
@@ -144,6 +163,11 @@ test___copy_from_user(void)
 	if (ret != 0) {
 		errx(3, "Expected 0, got %lu\n", ret);
 	}
+
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, ubuf, sizeof(ubuf), SCRIBE_DATA_INPUT);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, kbuf, ubuf, sizeof(ubuf), SCRIBE_DATA_INPUT);
+
+	scribe_uaccess_init();
 
 	memset(kbuf, '\0', sizeof(kbuf));
 	partial_ubuf = setup_partially_mapped_buffer(sizeof(UBUF_STRING));
@@ -153,7 +177,8 @@ test___copy_from_user(void)
 	if (ret != sizeof(UBUF_STRING)) {
 		errx(3, "Expected %zu, got %ld", sizeof(UBUF_STRING), ret);
 	}
-	scribe_uaccess_verify(true, SCRIBE_DATA_INPUT, true, SCRIBE_DATA_INPUT);
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, partial_ubuf, sizeof(UBUF_STRING), SCRIBE_DATA_INPUT);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, false, NULL, NULL, 0, 0);
 }
 
 static void
@@ -164,11 +189,19 @@ test___copy_to_user(void)
 	char *partial_ubuf;
 	unsigned long ret;
 
+	scribe_uaccess_init();
+
 	printf("kbuf = %p, ubuf = %p\n", kbuf, ubuf);
 	ret = __copy_to_user(ubuf, kbuf, sizeof(kbuf));
 	if (ret != 0)
 		errx(3, "Expected %zu, got %ld", 0, ret);
 	printf("ret = %lu, ubuf is %s\n", ret, ubuf);
+
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, ubuf, sizeof(kbuf), 0);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, kbuf, ubuf, sizeof(kbuf), 0);
+
+	scribe_uaccess_init();
+
 	partial_ubuf = setup_partially_mapped_buffer(sizeof(kbuf));
 	printf("kbuf = %p, partial_ubuf = %p\n", kbuf, partial_ubuf);
 	ret = __copy_to_user(partial_ubuf, kbuf, sizeof(kbuf));
@@ -176,7 +209,9 @@ test___copy_to_user(void)
 	if (ret != (sizeof(kbuf) / 2)) {
 		errx(3, "Expected %zu, got %ld", (sizeof(kbuf) / 2), ret);
 	}
-	scribe_uaccess_verify(true, 0, true, 0);
+
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, partial_ubuf, sizeof(kbuf), 0);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, false, NULL, NULL, 0, 0);
 }
 
 static struct testcase {
@@ -222,7 +257,6 @@ main(int argc, char **argv)
 		if (strcmp(testcases[i].name, testcase))
 			continue;
 		printf("*** %s\n", testcases[i].name);
-		scribe_uaccess_init();
 		testcases[i].func();
 		exit(0);
 	}
