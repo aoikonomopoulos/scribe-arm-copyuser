@@ -102,7 +102,7 @@
 	stmfd sp!, {r1, r2, r3, lr}
 	@ load up the argument values we saved on entry, but
 	@ exchange r0, r1
-	ldr r1, [sp, #31]
+	ldr r1, [sp, #32]
 	ldr r2, [sp, #20]
 	ldr r0, [sp, #16]
 	mov r3, #0
