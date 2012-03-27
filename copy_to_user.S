@@ -84,9 +84,9 @@
 	@ on whether reg1 or reg2 happens to be r1. r0 is always at the same offset.
 	stmfd sp!, {r1, r2, r3, lr}
 	@ exchange r0, r1
-	mov r2, r0
+	mov r3, r0
 	mov r0, r1
-	mov r1, r2
+	mov r1, r3
 	@ r2 (size) is already setup
 	@ r3 (flags) needs to be loaded up w/ a constant
 	mov r3, #0
