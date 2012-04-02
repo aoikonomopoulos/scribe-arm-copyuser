@@ -64,6 +64,10 @@ scribe_uaccess_init(void)
 static void
 scribe_uaccess_verify(struct scribe_uaccess_log *log, bool done, void *data, void *uptr, size_t size, int flags)
 {
+#ifndef WANT_CONFIG_SCRIBE
+	assert_eq("%d != %d", log->done, false);
+	return;
+#endif
 	assert_eq("%d != %d", log->done, done);
 	if (!done)
 		return;
