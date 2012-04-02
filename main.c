@@ -86,7 +86,7 @@ scribe_pre_uaccess(const void *data, const void __user *user_ptr,
 	scribe_uaccess_log_pre.uptr = user_ptr;
 	scribe_uaccess_log_pre.flags = flags;
 	scribe_uaccess_log_pre.size = size;
-	printf("%s: called with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
+	printf("%s:\tcalled with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
 }
 
 void
@@ -98,7 +98,7 @@ scribe_post_uaccess(const void *data, const void __user *user_ptr,
 	scribe_uaccess_log_post.uptr = user_ptr;
 	scribe_uaccess_log_post.flags = flags;
 	scribe_uaccess_log_post.size = size;
-	printf("%s: called with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
+	printf("%s:\tcalled with (%p, %p, %zd, %d)\n", __func__, data, user_ptr, size, flags);
 }
 
 void
