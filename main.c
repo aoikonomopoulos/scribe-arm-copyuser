@@ -1,4 +1,5 @@
 #include <err.h>
+#include <errno.h>
 #include <linux/scribe_uaccess.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -17,6 +18,7 @@
 /* remember: returns the number of bytes that could not be copied */
 extern unsigned long   __copy_from_user(void *to, const void __user *from, unsigned long n);
 extern unsigned long   __copy_to_user(void __user *to, const void *from, unsigned long n);
+unsigned int csum_partial_copy_from_user(const char *src, char *dst, int len, int sum, int *err_ptr);
 
 extern void loadcontext(mcontext_t *);
 
@@ -214,6 +216,51 @@ test___copy_to_user(void)
 	scribe_uaccess_verify(&scribe_uaccess_log_post, false, NULL, NULL, 0, 0);
 }
 
+static void
+test_csum_partial_copy_from_user(void)
+{
+#undef UBUF_STRING
+#define UBUF_STRING "TTSSTTS"
+	char ubuf[] = UBUF_STRING;
+	char kbuf[1024];
+	char *partial_ubuf;
+	unsigned csum;
+	int err;
+	const unsigned INITIAL_CSUM = 0xfe47;
+	const unsigned 	verify_csum = 0x53a7a6ef;	/* XXX: compare against C version */
+
+	scribe_uaccess_init();
+
+	memset(kbuf, '\0', sizeof(kbuf));
+	printf("kbuf = %p, ubuf = %p\n", kbuf, ubuf);
+	err = 0;
+	csum = csum_partial_copy_from_user(ubuf, kbuf, sizeof(ubuf), INITIAL_CSUM, &err);
+	printf("err = %d, csum = %#x, kbuf is %s\n", err, csum, kbuf);
+	if (err != 0) {
+		errx(3, "Expected 0, got %d\n", err);
+	}
+
+	if (verify_csum != csum) {
+		errx(3, "Checksum mismatch, expected %#x, calculated %#x\n", verify_csum, csum);
+	}
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, ubuf, sizeof(ubuf), SCRIBE_DATA_INPUT);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, kbuf, ubuf, sizeof(ubuf), SCRIBE_DATA_INPUT);
+
+	scribe_uaccess_init();
+
+	memset(kbuf, '\0', sizeof(kbuf));
+	partial_ubuf = setup_partially_mapped_buffer(sizeof(UBUF_STRING));
+	printf("kbuf = %p, partial_ubuf = %p\n", kbuf, partial_ubuf);
+	err = 0;
+	csum = csum_partial_copy_from_user(partial_ubuf, kbuf, sizeof(UBUF_STRING), INITIAL_CSUM, &err);
+	printf("err = %d, csum = %#x, kbuf is %s\n", err, csum, kbuf);
+	if (err != -EFAULT) {
+		errx(3, "Expected %d, got %d\n", -EFAULT, err);
+	}
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, partial_ubuf, sizeof(ubuf), SCRIBE_DATA_INPUT);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, false, NULL, NULL, 0, 0);
+}
+
 static struct testcase {
 	const char *name;
 	void (*func)(void);
@@ -225,6 +272,7 @@ static struct testcase {
 	},
 	TC(__copy_from_user)
 	TC(__copy_to_user)
+	TC(csum_partial_copy_from_user)
 #undef TC
 };
 

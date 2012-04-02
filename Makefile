@@ -6,7 +6,7 @@ LINK_OPTS_BEGIN=-static -T armelf_linux_eabi.x -X --hash-style=both -m armelf_li
 LINK_OPTS_END=-L/usr/arm-linux-gnueabi/lib -lc -L /usr/lib/gcc/arm-linux-gnueabi/4.4.5 -lgcc /usr/lib/gcc/arm-linux-gnueabi/4.4.5/crtend.o /usr/arm-linux-gnueabi/lib/crtn.o -lgcc_eh
 CFLAGS=-g -W -Wall -isystem .
 
-a.out: copy_from_user.o copy_to_user.o memzero.o loadcontext.o main.o extable.o
+a.out: csumpartialcopyuser.o copy_from_user.o copy_to_user.o memzero.o loadcontext.o main.o extable.o
 	$(LD) $(LINK_OPTS_BEGIN) -o $@ $^ $(LINK_OPTS_END)
 
 main.o: main.c Makefile
@@ -16,6 +16,9 @@ extable.o: extable.c Makefile
 	$(CC) -c $(CFLAGS) -D__LINUX_ARM_ARCH__=7 -o $@ $<
 
 loadcontext.o: loadcontext.S Makefile
+	$(CC) $(OPTS) -o $@ $<
+
+csumpartialcopyuser.o: csumpartialcopyuser.S Makefile
 	$(CC) $(OPTS) -o $@ $<
 
 copy_from_user.o: copy_from_user.S Makefile

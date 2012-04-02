@@ -17,11 +17,56 @@
 		.text
 
 		.macro	save_regs
-		stmfd	sp!, {r1, r2, r4 - r8, lr}
+#ifdef CONFIG_SCRIBE
+		@ save the values that might be clobbered by the call
+		@ (we'll need them on the exit path too)
+		stmfd	sp!, {r0 - r3, lr}
+#define SCRIBE_SAVED_SIZE	(5 * 4)
+		@ swap r0, r1, the order of kptr, uptr is reversed
+		@ in scribe_pre_uaccess
+		mov	r0, r1
+		ldr	r1, [sp]
+		@ r2 already holds the size
+		mov	r3, #SCRIBE_DATA_INPUT
+		bl	scribe_pre_uaccess
+		@ restore without updating sp (we'll need the args on exit too)
+		ldmfd	sp, {r0 - r3, lr}
+		@ Note: we need to do all this before the following stmfd, since
+		@ the code in csumpartialcopygeneric.S references the saved
+		@ values
+#endif	/* CONFIG_SCRIBE */
+		stmfd	sp!, {r1, r2, r4 - r8, lr}	@ 8 regs * 4 bytes
+#define SAVED_SIZE (8 * 4)
+		.endm
+
+		.macro	_load_regs_noscribe
+		ldmfd	sp!, {r1, r2, r4 - r8, pc}
 		.endm
 
 		.macro	load_regs
-		ldmfd	sp!, {r1, r2, r4 - r8, pc}
+#ifdef CONFIG_SCRIBE
+		@ load the saved arguments (while exchanging r0, r1)
+		ldr	r1, [sp, #SAVED_SIZE]
+		str	r0, [sp, #SAVED_SIZE]	@ save return value
+		ldr	r0, [sp, #(SAVED_SIZE + 4)]
+		str	r3, [sp, #(SAVED_SIZE + 4)]	@ XXX: not needed
+		ldr	r2, [sp, #(SAVED_SIZE + 8)]
+		@ XXX: clobber r3
+		mov	r3, #SCRIBE_DATA_INPUT
+		bl	scribe_post_uaccess
+		@
+		@ ldmfd	sp!, {r1, r2, r4 - r8, pc}
+		ldr	r0, [sp, #SAVED_SIZE]	@ restore return value
+		ldr	r3, [sp, #(SAVED_SIZE + 4)]
+		@ load everything but the pc
+		ldmfd	sp!, {r1, r2, r4 - r8}
+		@ [sp] contains the return address, but we need to adjust
+		@ sp before returning
+		add	sp, sp, #(4 + SCRIBE_SAVED_SIZE - 4)	@ drop previous saved lr, r0 - r3
+		ldmfd	sp!, {pc}
+#else	/* !CONFIG_SCRIBE */
+		_load_regs_noscribe
+#endif	/* CONFIG_SCRIBE */
 		.endm
 
 		.macro	load1b,	reg1
@@ -70,7 +115,11 @@
 		.pushsection .fixup,"ax"
 		.align	4
 9001:		mov	r4, #-EFAULT
+#ifdef CONFIG_SCRIBE
+		ldr	r5, [sp, #(SAVED_SIZE + SCRIBE_SAVED_SIZE)]
+#else	/* !CONFIG_SCRIBE */
 		ldr	r5, [sp, #8*4]		@ *err_ptr
+#endif	/* CONFIG_SCRIBE */
 		str	r4, [r5]
 		ldmia	sp, {r1, r2}		@ retrieve dst, len
 		add	r2, r2, r1
@@ -78,5 +127,5 @@
 9002:		teq	r2, r1
 		strneb	r0, [r1], #1
 		bne	9002b
-		load_regs
+		_load_regs_noscribe
 		.popsection
