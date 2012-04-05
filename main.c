@@ -24,6 +24,13 @@ unsigned int csum_partial_copy_from_user(const char *src, char *dst, int len, in
 /* returns number of bytes not cleared */
 int __clear_user(void *addr, size_t sz);
 
+/*
+ * returns the number of characters copied (strlen of copied string),
+ * -EFAULT on exception, or "len" if we fill the whole buffer
+ */
+extern unsigned long __strncpy_from_user(char *to, const char *from,
+					 unsigned long count);
+
 extern void loadcontext(mcontext_t *);
 
 struct scribe_uaccess_log {
@@ -310,6 +317,62 @@ test_clear_user(void)
 			      sizeof(UBUF_STRING) - (sizeof(UBUF_STRING) / 2), SCRIBE_DATA_ZERO);
 }
 
+static void
+test___strncpy_from_user(void)
+{
+	char ubuf[] = UBUF_STRING;
+	char kbuf[1024];
+	char *partial_ubuf;
+	int ret;
+
+	scribe_uaccess_init();
+	memset(kbuf, '\0', sizeof(kbuf));
+	ret = __strncpy_from_user(kbuf, ubuf, sizeof(kbuf));
+	if (ret != (sizeof(ubuf) - 1))
+		errx(3, "Expected %zd, got %d\n", sizeof(ubuf) - 1, ret);
+
+	if (strcmp(ubuf, kbuf))
+		errx(3, "kbuf does not much ubuf\n");
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, ubuf,
+			      sizeof(kbuf),
+			      SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, kbuf, ubuf,
+			      sizeof(ubuf) - 1,
+			      SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING);
+
+	scribe_uaccess_init();
+	memset(kbuf, '\0', sizeof(kbuf));
+	ret = __strncpy_from_user(kbuf, ubuf, sizeof(UBUF_STRING) / 2);
+	if (ret != (sizeof(UBUF_STRING) / 2))
+		errx(3, "Expected %zd, got %d\n", sizeof(UBUF_STRING) / 2, ret);
+
+	if (strncmp(ubuf, kbuf, sizeof(UBUF_STRING) / 2))
+		errx(3, "kbuf does not much ubuf\n");
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, ubuf,
+			      sizeof(UBUF_STRING) / 2,
+			      SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, kbuf, ubuf,
+			      sizeof(UBUF_STRING) / 2,
+			      SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING);
+
+	scribe_uaccess_init();
+	memset(kbuf, '\0', sizeof(kbuf));
+	partial_ubuf = setup_partially_mapped_buffer(sizeof(UBUF_STRING));
+	ret = __strncpy_from_user(kbuf, partial_ubuf, sizeof(UBUF_STRING));
+
+	if (ret != -EFAULT)
+		errx(3, "Expected %d, got %#x\n", -EFAULT, ret);
+
+	if (strncmp(ubuf, kbuf, sizeof(UBUF_STRING) / 2))
+		errx(3, "Partially copied data does not match what we expected "
+		     "(kbuf: '%s')\n", kbuf);
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, kbuf, partial_ubuf,
+			      sizeof(UBUF_STRING),
+			      SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, kbuf, partial_ubuf,
+			      0, SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING);
+}
+
 static struct testcase {
 	const char *name;
 	void (*func)(void);
@@ -323,6 +386,7 @@ static struct testcase {
 	TC(__copy_to_user)
 	TC(csum_partial_copy_from_user)
 	TC(clear_user)
+	TC(__strncpy_from_user)
 #undef TC
 };
 

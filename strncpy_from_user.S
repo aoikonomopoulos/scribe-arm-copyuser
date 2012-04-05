@@ -21,6 +21,13 @@
  *  -EFAULT on exception, or "len" if we fill the whole buffer
  */
 ENTRY(__strncpy_from_user)
+#ifdef CONFIG_SCRIBE
+	stmfd	sp!, {r0, r1, r2, lr}
+	mov	r3, #(SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING)
+	bl	scribe_pre_uaccess
+	@ do not update sp, we need the data on exit too
+	ldmfd	sp, {r0, r1, r2, lr}
+#endif	/* CONFIG_SCRIBE */
 	mov	ip, r1
 1:	subs	r2, r2, #1
 	ldrusr	r3, r1, 1, pl
@@ -30,6 +37,14 @@ ENTRY(__strncpy_from_user)
 	bne	1b
 	sub	r1, r1, #1	@ take NUL character out of count
 2:	sub	r0, r1, ip
+#ifdef CONFIG_SCRIBE
+	str	r0, [sp, #8]
+	mov	r2, r0
+	ldmfd	sp!, {r0, r1}
+	mov	r3, #(SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING)
+	bl	scribe_post_uaccess
+	ldmfd	sp!, {r0, pc}
+#endif	/* CONFIG_SCRIBE */
 	mov	pc, lr
 ENDPROC(__strncpy_from_user)
 
@@ -37,6 +52,13 @@ ENDPROC(__strncpy_from_user)
 	.align	0
 9001:	mov	r3, #0
 	strb	r3, [r0, #0]	@ null terminate
+#ifdef CONFIG_SCRIBE
+	ldmfd	sp!, {r0, r1, r2}
+	mov	r2, #0
+	mov	r3, #(SCRIBE_DATA_INPUT|SCRIBE_DATA_STRING)
+	bl	scribe_post_uaccess
+	ldmfd	sp!, {lr}
+#endif	/* CONFIG_SCRIBE */
 	mov	r0, #-EFAULT
 	mov	pc, lr
 	.popsection
