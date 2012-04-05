@@ -227,9 +227,8 @@ test___copy_to_user(void)
 static void
 test_csum_partial_copy_from_user(void)
 {
-#undef UBUF_STRING
-#define UBUF_STRING "TTSSTTS"
-	char ubuf[] = UBUF_STRING;
+#define CPCFU_UBUF_STRING "TTSSTTS"
+	char ubuf[] = CPCFU_UBUF_STRING;
 	char kbuf[1024];
 	char *partial_ubuf;
 	unsigned csum;
@@ -257,10 +256,10 @@ test_csum_partial_copy_from_user(void)
 	scribe_uaccess_init();
 
 	memset(kbuf, '\0', sizeof(kbuf));
-	partial_ubuf = setup_partially_mapped_buffer(sizeof(UBUF_STRING));
+	partial_ubuf = setup_partially_mapped_buffer(sizeof(CPCFU_UBUF_STRING));
 	printf("kbuf = %p, partial_ubuf = %p\n", kbuf, partial_ubuf);
 	err = 0;
-	csum = csum_partial_copy_from_user(partial_ubuf, kbuf, sizeof(UBUF_STRING), INITIAL_CSUM, &err);
+	csum = csum_partial_copy_from_user(partial_ubuf, kbuf, sizeof(CPCFU_UBUF_STRING), INITIAL_CSUM, &err);
 	printf("err = %d, csum = %#x, kbuf is %s\n", err, csum, kbuf);
 	if (err != -EFAULT) {
 		errx(3, "Expected %d, got %d\n", -EFAULT, err);
