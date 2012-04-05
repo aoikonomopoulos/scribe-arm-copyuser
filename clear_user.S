@@ -20,6 +20,16 @@
  */
 ENTRY(__clear_user_std)
 WEAK(__clear_user)
+#ifdef CONFIG_SCRIBE
+		stmfd	sp!, {r0-r12, lr}
+		mov	r2, r1		@ len
+		mov	r1, r0		@ uptr
+		mov	r0, #0		@ kptr == NULL
+		mov	r3, #SCRIBE_DATA_ZERO
+		bl	scribe_pre_uaccess
+		@ do not update sp, we need the args on exit too
+		ldmfd	sp, {r0-r12}
+#endif	/* CONFIG_SCRIBE */
 		stmfd	sp!, {r1, lr}
 		mov	r2, #0
 		cmp	r1, #4
@@ -43,12 +53,47 @@ WEAK(__clear_user)
 		it	ne			@ explicit IT needed for the label
 USER(		strnebt	r2, [r0])
 		mov	r0, #0
+#ifdef CONFIG_SCRIBE
+		ldr	r1, [sp, #8]	@ uptr
+		@ the only valuable value here is in r0, save it over our
+		@ stack copy of the initial r0 value
+		str	r0, [sp, #8]
+		@ r0 is the bytes remaining, we need to call scribe_post_uaccess
+		@ with bytes copied. Use the copy of the initial r1 value
+		@ on the stack
+		ldr	r2, [sp, #12]
+		mov	r0, #0		@ NULL
+		mov	r3, #SCRIBE_DATA_ZERO
+		bl	scribe_post_uaccess
+		add	sp, sp, #8	@ drop saved {r1, lr}
+		ldmfd	sp!, {r0-r12, pc}
+#else	/* !CONFIG_SCRIBE */
 		ldmfd	sp!, {r1, pc}
+#endif	/* CONFIG_SCRIBE */
+
 ENDPROC(__clear_user)
 ENDPROC(__clear_user_std)
 
 		.pushsection .fixup,"ax"
 		.align	0
-9001:		ldmfd	sp!, {r0, pc}
+9001:
+#ifdef CONFIG_SCRIBE
+		@ Need to calculate the number of bytes copied.
+		@ r0 holds the faulting user address and we have
+		@ saved the base address of the user buffer on
+		@ entry.
+		ldr	r1, [sp, #8]	@ uptr
+		sub	r2, r0, r1	@ calculate scribe len
+		mov	r0, #0		@ NULL
+		mov	r3, #SCRIBE_DATA_ZERO
+		bl	scribe_post_uaccess
+		@ The !CONFIG_SCRIBE asm always returns length on error
+		ldr	r0, [sp, #0]
+		str	r0, [sp, #8]
+		add	sp, sp, #8	@ drop saved {r1, lr}
+		ldmfd	sp!, {r0-r12, pc}
+#else	/* !CONFIG_SCRIBE */
+		ldmfd	sp!, {r0, pc}
+#endif	/* CONFIG_SCRIBE */
 		.popsection
 

@@ -17,8 +17,12 @@
 
 /* remember: returns the number of bytes that could not be copied */
 extern unsigned long   __copy_from_user(void *to, const void __user *from, unsigned long n);
+
 extern unsigned long   __copy_to_user(void __user *to, const void *from, unsigned long n);
 unsigned int csum_partial_copy_from_user(const char *src, char *dst, int len, int sum, int *err_ptr);
+
+/* returns number of bytes not cleared */
+int __clear_user(void *addr, size_t sz);
 
 extern void loadcontext(mcontext_t *);
 
@@ -265,6 +269,48 @@ test_csum_partial_copy_from_user(void)
 	scribe_uaccess_verify(&scribe_uaccess_log_post, false, NULL, NULL, 0, 0);
 }
 
+static void
+verify_zero_buf(char *addr, size_t sz)
+{
+	char *c;
+
+	for (c = addr; c < (addr + sz); ++c) {
+		if (*c) {
+			errx(3, "Nonzero byte (%d) in buffer %p at offset %d\n", *c, addr, c - addr);
+		}
+	}
+}
+
+static void
+test_clear_user(void)
+{
+	char ubuf[67];
+	char *partial_ubuf;
+	int ret;
+
+	scribe_uaccess_init();
+	memset(ubuf, 'A', sizeof(ubuf));
+	ret = __clear_user(ubuf, sizeof(ubuf));
+	if (ret != 0)
+		errx(3, "Expected 0, got %d\n", errno);
+	verify_zero_buf(ubuf, sizeof(ubuf));
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, NULL, ubuf, sizeof(ubuf), SCRIBE_DATA_ZERO);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, NULL, ubuf, sizeof(ubuf), SCRIBE_DATA_ZERO);
+
+	scribe_uaccess_init();
+	partial_ubuf = setup_partially_mapped_buffer(sizeof(UBUF_STRING));
+	ret = __clear_user(partial_ubuf, sizeof(UBUF_STRING));
+
+	/* on arm, __clear_user always returns the buffer size on error, even if it faulted partway through */
+	if (ret != sizeof(UBUF_STRING))
+		errx(3, "Expected %d, got %#x\n", sizeof(UBUF_STRING) - sizeof(UBUF_STRING) / 2, ret);
+
+	verify_zero_buf(partial_ubuf, sizeof(UBUF_STRING) / 2);
+	scribe_uaccess_verify(&scribe_uaccess_log_pre, true, NULL, partial_ubuf, sizeof(UBUF_STRING), SCRIBE_DATA_ZERO);
+	scribe_uaccess_verify(&scribe_uaccess_log_post, true, NULL, partial_ubuf,
+			      sizeof(UBUF_STRING) - (sizeof(UBUF_STRING) / 2), SCRIBE_DATA_ZERO);
+}
+
 static struct testcase {
 	const char *name;
 	void (*func)(void);
@@ -277,6 +323,7 @@ static struct testcase {
 	TC(__copy_from_user)
 	TC(__copy_to_user)
 	TC(csum_partial_copy_from_user)
+	TC(clear_user)
 #undef TC
 };
 
